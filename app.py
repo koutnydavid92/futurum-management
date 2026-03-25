@@ -1372,27 +1372,38 @@ with tab_prihlasky:
 
     st.caption(f"Zobrazeno {len(df_filtered)} z {len(df)} přihlášek")
 
-    # Vybrat sloupce k zobrazení
+    # Anonymizovat a vybrat sloupce k zobrazení
+    df_display = df_filtered.copy()
+
+    # Nahradit jména anonymním ID
+    if "uchazec_prijmeni" in df_display.columns and "uchazec_jmeno" in df_display.columns:
+        df_display["uchazeč"] = [f"Uchazeč #{i+1:04d}" for i in range(len(df_display))]
+        df_display = df_display.drop(columns=["uchazec_prijmeni", "uchazec_jmeno"], errors="ignore")
+    elif "uchazec_prijmeni" in df_display.columns:
+        df_display["uchazeč"] = [f"Uchazeč #{i+1:04d}" for i in range(len(df_display))]
+        df_display = df_display.drop(columns=["uchazec_prijmeni"], errors="ignore")
+
     display_cols = []
-    base_cols = ["uchazec_prijmeni", "uchazec_jmeno", "stav", "zamereni"]
-    for c in base_cols:
-        if c in df_filtered.columns:
+    if "uchazeč" in df_display.columns:
+        display_cols.append("uchazeč")
+    for c in ["stav", "zamereni"]:
+        if c in df_display.columns:
             display_cols.append(c)
 
     for i in range(1, MAX_PRIORIT + 1):
         for suffix in [f"skola_nazev_{i}", f"obor_nazev_{i}"]:
-            if suffix in df_filtered.columns:
+            if suffix in df_display.columns:
                 display_cols.append(suffix)
 
     if display_cols:
         st.dataframe(
-            df_filtered[display_cols],
+            df_display[display_cols],
             use_container_width=True,
             hide_index=True,
             height=600,
         )
     else:
-        st.dataframe(df_filtered, use_container_width=True, hide_index=True, height=600)
+        st.dataframe(df_display, use_container_width=True, hide_index=True, height=600)
 
 # ─── TAB 7: Obory ───────────────────────────────────────────────────────────
 

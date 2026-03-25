@@ -1,22 +1,5 @@
-# Data files - contain sensitive student data
-*.csv
-*.xlsx
-*.json
-
-# Python
 __pycache__/
 *.pyc
-*.pyo
-.venv/
-env/
-
-# OS
 .DS_Store
-Thumbs.db
-
-# Streamlit
 .streamlit/
-
-# IDE
-.vscode/
-.idea/
+*.tmp
