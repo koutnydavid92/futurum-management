@@ -4,6 +4,7 @@ Spuštění: streamlit run app.py
 """
 from __future__ import annotations
 
+import hmac
 import sys
 from pathlib import Path
 
@@ -42,6 +43,37 @@ st.set_page_config(
     page_icon="🎓",
     layout="wide",
 )
+
+
+# =============================================================================
+# Heslová brána
+# =============================================================================
+
+def check_password() -> bool:
+    """Vrátí True, pokud uživatel zadal správné heslo."""
+
+    def password_entered():
+        if hmac.compare_digest(
+            st.session_state.get("password", ""),
+            st.secrets.get("app_password", ""),
+        ):
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]
+        else:
+            st.session_state["password_correct"] = False
+
+    if st.session_state.get("password_correct", False):
+        return True
+
+    st.title(f"🎓 Přihlášky – {NASE_SKOLA_NAZEV}")
+    st.text_input("Heslo", type="password", on_change=password_entered, key="password")
+    if "password_correct" in st.session_state and not st.session_state["password_correct"]:
+        st.error("😕 Nesprávné heslo")
+    return False
+
+
+if not check_password():
+    st.stop()
 
 
 # =============================================================================
@@ -461,10 +493,18 @@ with tab_prehled:
         zdroj = nasi[sloupec].dropna()
         zdroj = zdroj[zdroj.str.strip() != ""]
         if len(zdroj) > 0:
-            zdroj_counts = zdroj.value_counts().head(20).reset_index()
-            zdroj_counts.columns = ["Škola", "Počet"]
+            zdroj_counts_all = zdroj.value_counts().reset_index()
+            zdroj_counts_all.columns = ["Škola", "Počet"]
+            zdroj_counts = zdroj_counts_all.head(20)
             st.caption(f"Zobrazeno top {len(zdroj_counts)} z {zdroj.nunique()} unikátních škol")
             st.dataframe(zdroj_counts, use_container_width=True, hide_index=True)
+            st.download_button(
+                "⬇️ Stáhnout celý seznam (CSV)",
+                data=zdroj_counts_all.to_csv(index=False).encode("utf-8-sig"),
+                file_name=f"odkud_prichazeji_{sloupec}.csv",
+                mime="text/csv",
+                key=f"dl_odkud_{sloupec}",
+            )
         else:
             st.info(f"Žádné záznamy pro sloupec {sloupec}.")
     else:
@@ -492,11 +532,19 @@ with tab_konkurence:
 
         with col1:
             st.subheader("Konkurenční školy")
+            _skoly_export = skoly.rename(columns={"nazev_skoly": "Škola", "pocet": "Počet uchazečů"})
             st.dataframe(
-                skoly.rename(columns={"nazev_skoly": "Škola", "pocet": "Počet uchazečů"}),
+                _skoly_export,
                 use_container_width=True,
                 hide_index=True,
                 height=500,
+            )
+            st.download_button(
+                "⬇️ Stáhnout celý seznam (CSV)",
+                data=_skoly_export.to_csv(index=False).encode("utf-8-sig"),
+                file_name=f"konkurencni_skoly_{volba_priority.lower().replace(' ', '_')}.csv",
+                mime="text/csv",
+                key=f"dl_konk_skoly_{volba_priority}",
             )
 
         with col2:
@@ -511,16 +559,24 @@ with tab_konkurence:
         st.divider()
         st.subheader("Detail: školy + obory")
         if skoly_obory is not None:
+            _skoly_obory_export = skoly_obory.rename(columns={
+                "nazev_skoly": "Škola",
+                "kod_oboru": "Kód oboru",
+                "nazev_oboru": "Obor",
+                "pocet": "Počet",
+            })
             st.dataframe(
-                skoly_obory.rename(columns={
-                    "nazev_skoly": "Škola",
-                    "kod_oboru": "Kód oboru",
-                    "nazev_oboru": "Obor",
-                    "pocet": "Počet",
-                }),
+                _skoly_obory_export,
                 use_container_width=True,
                 hide_index=True,
                 height=500,
+            )
+            st.download_button(
+                "⬇️ Stáhnout celý seznam (CSV)",
+                data=_skoly_obory_export.to_csv(index=False).encode("utf-8-sig"),
+                file_name=f"konkurencni_skoly_obory_{volba_priority.lower().replace(' ', '_')}.csv",
+                mime="text/csv",
+                key=f"dl_konk_skoly_obory_{volba_priority}",
             )
     else:
         st.warning("Žádné konkurenční přihlášky nalezeny.")
@@ -1284,34 +1340,58 @@ with tab_spadovost:
 
                 # Tabulka pod mapou
                 st.subheader("Počet uchazečů podle lokality")
+                _lokality_export = _city_counts[["mesto", "pocet"]].rename(
+                    columns={"mesto": "Město / čtvrť", "pocet": "Počet uchazečů"}
+                )
                 st.dataframe(
-                    _city_counts[["mesto", "pocet"]].rename(
-                        columns={"mesto": "Město / čtvrť", "pocet": "Počet uchazečů"}
-                    ),
+                    _lokality_export,
                     use_container_width=True,
                     hide_index=True,
+                )
+                st.download_button(
+                    "⬇️ Stáhnout celý seznam (CSV)",
+                    data=_lokality_export.to_csv(index=False).encode("utf-8-sig"),
+                    file_name=f"spadovost_lokality_{_col_map}.csv",
+                    mime="text/csv",
+                    key=f"dl_spad_lokality_{_col_map}",
                 )
 
             # Obce bez souřadnic (fallback match, ale nemáme GPS)
             if len(_no_coords) > 0:
                 with st.expander(f"Obce bez souřadnic na mapě ({_no_coords['pocet'].sum()} uchazečů)"):
+                    _nocoord_export = _no_coords.rename(columns={"mesto": "Obec", "pocet": "Počet"})
                     st.dataframe(
-                        _no_coords.rename(columns={"mesto": "Obec", "pocet": "Počet"}),
+                        _nocoord_export,
                         use_container_width=True,
                         hide_index=True,
+                    )
+                    st.download_button(
+                        "⬇️ Stáhnout celý seznam (CSV)",
+                        data=_nocoord_export.to_csv(index=False).encode("utf-8-sig"),
+                        file_name=f"spadovost_obce_bez_souradnic_{_col_map}.csv",
+                        mime="text/csv",
+                        key=f"dl_spad_nocoord_{_col_map}",
                     )
 
             # Zcela nelokalizované školy
             _unmatched = _skoly_series[_mesta_raw.isna()]
             if len(_unmatched) > 0:
-                _um_counts = _unmatched.value_counts().head(20)
+                _um_counts_all = _unmatched.value_counts().reset_index()
+                _um_counts_all.columns = ["Škola", "Počet"]
+                _um_counts = _um_counts_all.head(20)
                 with st.expander(f"Nelokalizované školy ({len(_unmatched)})"):
+                    st.caption(f"Zobrazeno top {len(_um_counts)} z {len(_um_counts_all)} unikátních škol")
                     st.dataframe(
-                        _um_counts.reset_index().rename(
-                            columns={"index": "Škola", _col_map: "Škola", "count": "Počet"}
-                        ),
+                        _um_counts,
                         use_container_width=True,
                         hide_index=True,
+                    )
+                    st.download_button(
+                        "⬇️ Stáhnout celý seznam (CSV)",
+                        data=_um_counts_all.to_csv(index=False).encode("utf-8-sig"),
+                        file_name=f"spadovost_nelokalizovane_{_col_map}.csv",
+                        mime="text/csv",
+                        key=f"dl_spad_unmatched_{_col_map}",
                     )
 
 # ─── TAB 6: Přihlášky ───────────────────────────────────────────────────────
